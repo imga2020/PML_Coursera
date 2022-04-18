@@ -1,0 +1,149 @@
+---
+title: "PML_CourseProject"
+author: "Ivanka Gonzalez Abreu"
+date: "18 April 2022"
+output:
+  html_document:
+    theme: journal
+    toc: yes
+  word_document: null
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/Economics05/Documents/Coursera/PML_CP")
+```
+
+# *Prediction Assignment: An Analysis of the data for Weight Lifting Exercises*
+
+##Overview
+This document presents an exercise made for the final project of the Practical Machine Learning Course. The exercise features an analysis of a Weight Lifting Exercises (WLE) data base, where six male individuals were asked to perform an unilateral dumbbell biceps curl in five different ways: one correct and 4 incorrect. With the help of the different variables measured with the health devices we proceed to predict which class of the exercise they were actually performing, which is our key variable: "Class".
+
+The prediction exercise is done with three different machine learning algorithms with the training set obtanied from the paper wrote by Velloso, Bulling et al.(2013) named *Qualitative Activity Recognition of Weight Lifting Exercises*. At the end we perform a test in a new set, to prove the best algorithm and verify its prediction capacity. 
+(For more information: http:/groupware.les.inf.puc-rio.br/har#dataset#ixzz4Tk1qqhqk) 
+
+The report is divided in three parts. First, we get the information from the WLE data set, review the structure, and clean the data set. Second, we perform three machine learning algorithms to see the prediction capacity for the presented variables. After reviewing their results, in the final section, we proceed to compare their features and test the best one in a new set to verify the predicted results.
+
+After performing our analysis, we concluded that the **random forest model** has a better performance for the testing set, followed closely by the gradient boosted trees (GBM).
+
+## Part 1: Load and check the data set
+We get the data and review the structure. After, we do some transformations for the variables.
+
+###Load packages
+```{r settingpack, echo=TRUE, warning=FALSE, results='hide', message=FALSE}
+library(ggplot2); library(caret); library(dplyr); library(rattle); library(scales) #load packages
+```
+
+###Get the data
+```{r settingdata, echo=TRUE, warning=FALSE, results='hide'}
+path1 <- "C:/Users/Economics05/Documents/Coursera/PML_CP" #set the path
+data_training <- read.csv(file.path(path1,"pml-training.csv"), header = TRUE) #training file
+data_test <- read.csv(file.path(path1, "pml-testing.csv"), header = TRUE) #testing file
+dim(data_training); dim(data_test) #check data dimensions
+
+#clean the data and eliminate variables near zero or with NAs.
+nzv_training <-nearZeroVar(data_training) #identify near zero variance
+data_training <- data_training[, -nzv_training] #remove near zero variables
+data_training <- data_training[,colMeans(is.na(data_training))<0.95] #remove variables mostly NAs
+data_training <- data_training[, -(1:6)] #remove unnecesary variables (Qualitative details)
+
+#Create two data sets within the training set for testing and validation
+set.seed(62433) #to be reproducible
+inTrain = createDataPartition(y = data_training$classe, p = 0.7, list = FALSE)
+training = data_training[inTrain,]
+validation = data_training[-inTrain,]
+```
+
+##Part 2: Applying the machine learning algorithms
+
+Now, with our datasets clean we proceed with the second part of the analysis, the application of the models to predict the exercise classe. we begin by using the *Decision Tree*.
+
+```{r model1_decisiontree}
+model1 <- train(classe~., method = "rpart", data = training)
+fancyRpartPlot(model1$finalModel)
+#print(model1$finalModel)
+```
+
+Now, we proceed to predict the classe on our validation data set with the decision tree model.
+
+```{r model1_test}
+predict_model1 <- predict(model1, newdata = validation)
+confusion_model1 <- confusionMatrix(predict_model1, factor(validation$classe))
+confusion_model1
+df_1<- data.frame(confusion_model1$overall[1]) #get the accuracy
+error_rate_1 <- percent(1-df_1$confusion_model1.overall.1, accuracy =0.01)  #get error rate
+```
+
+As we can see, the accuracy is low, because the model has wrongly predicted *`r error_rate_1`* of the values.
+
+
+So, we continue with our second model: *Random Forest*.
+
+But first, before applying it, we proceed to tune the parameters for the *cross-validation*. This process will allow us to resample the training data using different sections of it to assess the prediction model. We choose to divide the set in 3 subsets.
+
+```{r model2_rf}
+control_cv <- trainControl(method = "cv", number = 3, verboseIter = F) #Tune the cross validation parameters
+model2 <- train(classe~., method = "rf", data = training, trControl = control_cv) #Model2
+model2$finalModel
+```
+
+After estimating the model, we proceed to test it with the validation set. And review our confusion matrix.
+
+
+```{r model2_test}
+predict_model2 <- predict(model2, newdata = validation)
+confusion_model2 <- confusionMatrix(predict_model2, factor(validation$classe))
+confusion_model2
+df_2 <- data.frame(confusion_model2$overall[1]) #get the accuracy
+accuracy_2 <- percent(df_2$confusion_model2.overall.1.,accuracy = 0.01)
+```
+
+As we can see the results are much better than the model 1 with the decision tree. We got an accuracy of *`r accuracy_2`* and a really closed prediction to the reference values in the validation sample.
+
+
+We continue with our third and final model: *Boosting*.
+
+```{r model3_gbm}
+model3 <- train(classe~., method = "gbm", data = training, trControl = control_cv, tuneLength=5, verbose= F)
+model3$finalModel
+predict_model3 <- predict(model3, newdata = validation)
+confusion_model3 <- confusionMatrix(predict_model3, factor(validation$classe))
+confusion_model3
+```
+
+##Part 3: Comparison and application of the selected algorithm
+
+Recaping, we present the accuracy and out of error sample for the three models.
+
+```{r table_models, echo= FALSE}
+accuracy_model1 <- df_1$confusion_model1.overall.1
+error_rate_1n <- 1-df_1$confusion_model1.overall.1
+
+accuracy_2n <- df_2$confusion_model2.overall.1.
+error_rate_2 <- 1-df_2$confusion_model2.overall.1
+
+df_3 <- data.frame(confusion_model3$overall[1]) #get the accuracy
+accuracy_3 <- df_3$confusion_model3.overall.1.
+error_rate_3 <- 1-df_3$confusion_model3.overall.1.
+
+df_compare <- data.frame(Algorithm=c("Decision_Tree", "Random_Forest", "GBM"), Accuracy= c(accuracy_model1,accuracy_2n,accuracy_3), Out_of_Error=c(error_rate_1n,error_rate_2,error_rate_3))
+col_fin <- c("Accuracy", "Out_of_Error")
+df_compare[col_fin] <- lapply(df_compare[col_fin], formatC, digits = 4, decimal.mark=".", format ="f")
+df_compare
+```
+
+Comparing our models, we see that the best fit would be: Random Forest, based on the out of error results.
+
+###Exercise with the test sample
+
+Finally, we test the selected algorithm it in the final test sample.
+
+```{r test_final}
+final_test <- predict(model2, newdata = data_test)
+Val_prediction_results <- data.frame(Problem_ID=data_test$problem_id, Predicted_Result= final_test)
+print(Val_prediction_results)
+```
+
+##Conclusion
+
+After applying the model on the test set data, we can say that we have reached our main goal: To test different machine learning algorithms, select the best one based on the features and apply it to a test set to make predictions. As we can see, all models have their benefits, but in the end, the data we enter will determine the quality of the predictors and the model. For this case the best one turned out to be *Random Forest*.
